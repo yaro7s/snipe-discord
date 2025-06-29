@@ -1,27 +1,25 @@
 import threading
 import time
 import requests
+import os
+from flask import Flask
 
-# === CONFIG ===
+app = Flask(__name__)
+
+# Mets tes tokens dans les variables d'environnement Render ou remplace ici en dur (non recommandé)
 TOKENS = [
-    "TOKEN_1",
-    "TOKEN_2"
+    os.getenv("TOKEN_1"),  # remplace ou mets tes tokens en variables d'env
+    os.getenv("TOKEN_2")
 ]
 
-WEBHOOK_URL = "https://discord.com/api/webhooks/1389013099729653865/NFVE591oGbqd7-XEFw-48Z35xHIOcP4B8DPJapPZLfIeacYj7B3sMw8u4JSOInUANOGj"
-DELAY = 8
+WEBHOOK_URL = os.getenv("WEBHOOK")
 
-# === Couleurs ANSI ===
 RED = "\033[91m"
 GREEN = "\033[92m"
 BLUE = "\033[94m"
 RESET = "\033[0m"
 
-# === Variables globales ===
-watchlist = []
-index = 0
-lock = threading.Lock()
-
+# Ta watchlist dans un fichier txt (met à jour 'watchlist.txt' sur Render/GitHub)
 def load_watchlist(file_path="watchlist.txt"):
     with open(file_path, "r") as f:
         return [line.strip() for line in f if line.strip()]
@@ -58,7 +56,12 @@ def send_to_webhook(pseudo):
     except Exception as e:
         print(RED + f"[!] Erreur envoi webhook : {e}" + RESET)
 
-def worker(token):
+watchlist = []
+index = 0
+lock = threading.Lock()
+DELAY = 8
+
+def checker_loop():
     global index
     while True:
         with lock:
@@ -66,24 +69,27 @@ def worker(token):
                 index = 0
             pseudo = watchlist[index]
             index += 1
-        print(BLUE + f"[~] Token {token[:6]} vérifie @{pseudo}" + RESET)
-        if is_available(pseudo, token):
-            print(GREEN + f"[✅] DISPONIBLE : @{pseudo}" + RESET)
-            send_to_webhook(pseudo)
-        else:
-            print(RED + f"[✘] Indisponible : @{pseudo}" + RESET)
+        print(BLUE + f"[~] Vérification @{pseudo}" + RESET)
+        for token in TOKENS:
+            if token is None:
+                print(RED + "[!] Token manquant ou non chargé." + RESET)
+                continue
+            if is_available(pseudo, token):
+                print(GREEN + f"[✅] DISPONIBLE : @{pseudo}" + RESET)
+                send_to_webhook(pseudo)
+                break
+            else:
+                print(RED + f"[✘] Indisponible : @{pseudo}" + RESET)
         time.sleep(DELAY)
 
-def main():
-    global watchlist
-    watchlist = load_watchlist()
-    threads = []
-    for token in TOKENS:
-        t = threading.Thread(target=worker, args=(token,))
-        t.start()
-        threads.append(t)
-    for t in threads:
-        t.join()
+@app.route("/")
+def home():
+    return "Sniper Discord actif !"
 
 if __name__ == "__main__":
-    main()
+    watchlist = load_watchlist()
+    thread = threading.Thread(target=checker_loop)
+    thread.daemon = True
+    thread.start()
+    app.run(host="0.0.0.0", port=10000)
+
